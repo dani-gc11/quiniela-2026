@@ -665,6 +665,7 @@ let allPredictions={};
 let adminLoaded=false;
 let pendingDeleteName=null;
 let pendingClearResultId=null;
+let loadingHoy=false;
 
 function waitForFirebase(fn){if(window.firebaseReady)fn();else window.addEventListener('firebase-ready',fn,{once:true});}
 async function fsGet(key){return window.fbStorage.get(key);}
@@ -740,6 +741,9 @@ function getSpanishDayDate(){
 }
 
 async function loadHoy(){
+  if(loadingHoy) return;
+  loadingHoy=true;
+  try{
   document.getElementById('hoy-date').textContent=getSpanishDayDate();
   let results={};
   try{const r=await fsGet('results');results=JSON.parse(r.value);}catch(e){}
@@ -779,13 +783,16 @@ async function loadHoy(){
   let players=[];
   try{const pr=await fsGet('players');players=JSON.parse(pr.value);}catch(e){}
   const preds={};
-  for(const name of players){
-    try{
-      const key='pred:'+name.toLowerCase().replace(/\s+/g,'_');
-      const p=await fsGet(key);
-      preds[name]=JSON.parse(p.value).predictions;
-    }catch(e){}
-  }
+
+  await Promise.all(
+    players.map(async name=>{
+      try{
+        const key='pred:'+name.toLowerCase().replace(/\s+/g,'_');
+        const p=await fsGet(key);
+        preds[name]=JSON.parse(p.value).predictions;
+      }catch(e){}
+    })
+  );
 
   feedContainer.innerHTML=playedMatches.map(m=>{
     const r=results[m.id];
