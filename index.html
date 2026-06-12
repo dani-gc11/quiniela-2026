@@ -259,28 +259,10 @@ body{background:var(--fondo);color:var(--text);font-family:'DM Sans',sans-serif;
 
 <div class="firebase-loading" id="fb-loading"><div class="spinner"></div><p>Conectando...</p></div>
 
-<nav class="nav" style="display:none" id="main-nav">
-  <button class="nav-btn active" onclick="goTo('hoy')" id="nav-hoy"><span class="nav-icon">📅</span><span id="nav-lbl-hoy">Hoy</span></button>
-  <button class="nav-btn" onclick="goTo('tabla')" id="nav-tabla"><span class="nav-icon">🏆</span><span id="nav-lbl-tabla">Tabla</span></button>
+<nav class="nav" style="display:none" id="main-nav"><button class="nav-btn active" onclick="goTo('tabla')" id="nav-tabla"><span class="nav-icon">🏆</span><span id="nav-lbl-tabla">Tabla</span></button>
   <button class="nav-btn" onclick="goTo('quiniela')" id="nav-quiniela"><span class="nav-icon">⚽</span><span id="nav-lbl-quiniela">Mi Quiniela</span></button>
   <button class="nav-btn" onclick="goTo('admin')" id="nav-admin"><span class="nav-icon">🔐</span><span id="nav-lbl-admin">Admin</span></button>
 </nav>
-
-<!-- ===== HOY ===== -->
-<div id="tab-hoy" class="screen active" style="display:none">
-  <div class="hoy-hero">
-    <div class="hoy-title" id="hoy-title">Partidos de Hoy</div>
-    <div class="hoy-date" id="hoy-date"></div>
-  </div>
-  <div class="hoy-section">
-    <div class="hoy-section-title" id="lbl-partidos-hoy">Partidos de hoy</div>
-    <div id="partidos-hoy-container"><div class="no-partidos">Cargando...</div></div>
-  </div>
-  <div class="hoy-section" style="padding-top:0">
-    <div class="hoy-section-title" id="lbl-ultimos">Últimos resultados</div>
-    <div id="feed-container"><div class="no-partidos">Cargando...</div></div>
-  </div>
-</div>
 
 <!-- ===== QUINIELA ===== -->
 <div id="tab-quiniela" class="screen" style="display:none">
@@ -493,7 +475,7 @@ window.fbStorage={
 };
 document.getElementById("fb-loading").style.display="none";
 document.getElementById("main-nav").style.display="flex";
-document.getElementById("tab-hoy").style.display="block";
+document.getElementById("tab-tabla").style.display="block";
 window.firebaseReady=true;
 window.dispatchEvent(new Event("firebase-ready"));
 </script>
@@ -673,13 +655,12 @@ async function fsDel(key){return window.fbStorage.delete(key);}
 
 // --- NAV ---
 function goTo(tab){
-  ['hoy','tabla','quiniela','admin'].forEach(t=>{
+  ['tabla','quiniela','admin'].forEach(t=>{
     document.getElementById('tab-'+t).classList.toggle('active',t===tab);
     document.getElementById('tab-'+t).style.display=t===tab?'block':'none';
     document.getElementById('nav-'+t).classList.toggle('active',t===tab);
   });
   if(tab==='tabla')loadTabla();
-  if(tab==='hoy')loadHoy();
 }
 window.goTo=goTo;
 
@@ -695,7 +676,6 @@ function setLang(l){
   document.getElementById('lbl-nombre').textContent=t.nombre;
   document.getElementById('player-name').placeholder=t.placeholder;
   document.getElementById('submit-btn').textContent=t.submit;
-  document.getElementById('nav-lbl-hoy').textContent=t.navHoy;
   document.getElementById('nav-lbl-quiniela').textContent=t.navQuiniela;
   document.getElementById('nav-lbl-tabla').textContent=t.navTabla;
   document.getElementById('nav-lbl-admin').textContent=t.navAdmin;
@@ -718,121 +698,59 @@ function setLang(l){
   document.getElementById('lbl-th-exact').textContent=t.thExact;
   document.getElementById('lbl-th-winner').textContent=t.thWinner;
   document.getElementById('lbl-th-partial').textContent=t.thPartial;
-  document.getElementById('hoy-title').textContent=t.hoyTitle;
-  document.getElementById('lbl-partidos-hoy').textContent=t.lbl_hoy;
-  document.getElementById('lbl-ultimos').textContent=t.lbl_ultimos;
   buildMatches();
 }
 window.setLang=setLang;
 
-// --- HOY ---
-function getTodayDateStr(){
-  const now=new Date();
-  const months=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  return now.getDate()+' '+months[now.getMonth()];
-}
-
-function getSpanishDayDate(){
-  const now=new Date();
-  const dias=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-  const meses=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  return dias[now.getDay()]+', '+now.getDate()+' de '+meses[now.getMonth()]+' '+now.getFullYear();
-}
-
-async function loadHoy(){
-  const hoyContainer=document.getElementById('partidos-hoy-container');
+// HOY REMOVED
+/* Hoy tab removed */
+// Feed: últimos 8 partidos con resultado
+  const playedMatches=MATCHES_DATA.filter(m=>results[m.id]).slice(-8).reverse();
   const feedContainer=document.getElementById('feed-container');
-  const t=T[lang];
-  try{
-    document.getElementById('hoy-date').textContent=getSpanishDayDate();
 
-    // 1. Load results (non-blocking)
-    let results={};
-    try{const r=await fsGet('results');results=JSON.parse(r.value);}catch(e){}
-    Object.assign(savedResults,results);
-
-    // 2. Partidos de hoy
-    const today=getTodayDateStr();
-    const todayMatches=MATCHES_DATA.filter(m=>m.date===today);
-    if(todayMatches.length===0){
-      hoyContainer.innerHTML='<div class="no-partidos">'+t.noPartidos+'</div>';
-    }else{
-      hoyContainer.innerHTML=todayMatches.map(m=>{
-        const r=results[m.id];const hasResult=!!r;
-        return '<div class="partido-hoy">'
-          +'<div class="partido-hoy-group">Grupo '+m.group+' · '+m.venue+'</div>'
-          +'<div class="partido-hoy-teams">'
-          +'<div class="partido-hoy-team home">'+cn(m.home)+'</div>'
-          +'<div class="partido-hoy-score'+(hasResult?'':' pending')+'">'+(hasResult?r.h+' — '+r.a:'— vs —')+'</div>'
-          +'<div class="partido-hoy-team">'+cn(m.away)+'</div>'
-          +'</div></div>';
-      }).join('');
-    }
-
-    // 3. Feed: últimos 8 partidos con resultado
-    const playedMatches=MATCHES_DATA.filter(m=>results[m.id]).slice(-8).reverse();
-    if(playedMatches.length===0){
-      feedContainer.innerHTML='<div class="no-partidos">'+t.noResultados+'</div>';
-      return;
-    }
-
-    // Show feed skeleton while loading predictions
-    feedContainer.innerHTML=playedMatches.map(m=>{
-      const r=results[m.id];
-      return '<div class="feed-item">'
-        +'<div class="feed-match"><span>'+cn(m.home)+' vs '+cn(m.away)+' · Grupo '+m.group+'</span>'
-        +'<span class="feed-score">'+r.h+' — '+r.a+'</span></div>'
-        +'<div class="feed-date">'+m.date+' · '+m.venue+'</div>'
-        +'<div class="feed-winners" id="feed-pills-'+m.id+'"><span style="font-size:11px;color:var(--muted)">Cargando...</span></div>'
-        +'</div>';
-    }).join('');
-
-    // 4. Load players list
-    let players=[];
-    try{const pr=await fsGet('players');players=JSON.parse(pr.value);}catch(e){}
-    if(players.length===0){
-      playedMatches.forEach(m=>{const el=document.getElementById('feed-pills-'+m.id);if(el)el.innerHTML='';});
-      return;
-    }
-
-    // 5. Load each player prediction independently — never blocks on failure
-    const preds={};
-    await Promise.allSettled(players.map(async name=>{
-      try{
-        const key='pred:'+name.toLowerCase().replace(/\s+/g,'_');
-        const p=await fsGet(key);
-        preds[name]=JSON.parse(p.value).predictions;
-        allPredictions[name]=preds[name];
-      }catch(e){}
-    }));
-
-    // 6. Render pills per match
-    playedMatches.forEach(m=>{
-      const r=results[m.id];
-      const el=document.getElementById('feed-pills-'+m.id);
-      if(!el)return;
-      const exact=[],winner=[],partial=[],none=[];
-      players.forEach(name=>{
-        const pp=preds[name];if(!pp){none.push(name);return;}
-        const p=pp[m.id];if(!p){none.push(name);return;}
-        if(p.h===r.h&&p.a===r.a){exact.push(name);return;}
-        if(Math.sign(p.h-p.a)===Math.sign(r.h-r.a)){winner.push(name);return;}
-        if(p.h===r.h||p.a===r.a){partial.push(name);return;}
-        none.push(name);
-      });
-      el.innerHTML=[
-        ...exact.map(n=>'<span class="feed-pill exact">⭐ '+n+'</span>'),
-        ...winner.map(n=>'<span class="feed-pill winner">✓ '+n+'</span>'),
-        ...partial.map(n=>'<span class="feed-pill partial">· '+n+'</span>'),
-        ...none.map(n=>'<span class="feed-pill none">'+n+'</span>'),
-      ].join('');
-    });
-
-  }catch(e){
-    console.error('loadHoy error:',e);
-    hoyContainer.innerHTML='<div class="no-partidos">❌ Error al cargar. <button class="refresh-btn" onclick="loadHoy()" style="margin-left:8px">↻ Reintentar</button></div>';
-    feedContainer.innerHTML='';
+  if(playedMatches.length===0){
+    feedContainer.innerHTML=`<div class="no-partidos">${t.noResultados}</div>`;
+    return;
   }
+
+  // Load all player predictions for feed
+  let players=[];
+  try{const pr=await fsGet('players');players=JSON.parse(pr.value);}catch(e){}
+  const preds={};
+  for(const name of players){
+    try{
+      const key='pred:'+name.toLowerCase().replace(/\s+/g,'_');
+      const p=await fsGet(key);
+      preds[name]=JSON.parse(p.value).predictions;
+    }catch(e){}
+  }
+
+  feedContainer.innerHTML=playedMatches.map(m=>{
+    const r=results[m.id];
+    const exact=[],winner=[],partial=[],none=[];
+    for(const name in preds){
+      const p=preds[name][m.id];
+      if(!p){none.push(name);continue;}
+      if(p.h===r.h&&p.a===r.a){exact.push(name);continue;}
+      if(Math.sign(p.h-p.a)===Math.sign(r.h-r.a)){winner.push(name);continue;}
+      if(p.h===r.h||p.a===r.a){partial.push(name);continue;}
+      none.push(name);
+    }
+    const pillsHtml=[
+      ...exact.map(n=>`<span class="feed-pill exact">⭐ ${n}</span>`),
+      ...winner.map(n=>`<span class="feed-pill winner">✓ ${n}</span>`),
+      ...partial.map(n=>`<span class="feed-pill partial">· ${n}</span>`),
+      ...none.map(n=>`<span class="feed-pill none">${n}</span>`),
+    ].join('');
+    return`<div class="feed-item">
+      <div class="feed-match">
+        <span>${cn(m.home)} vs ${cn(m.away)} · Grupo ${m.group}</span>
+        <span class="feed-score">${r.h} — ${r.a}</span>
+      </div>
+      <div class="feed-date">${m.date} · ${m.venue}</div>
+      ${players.length>0?`<div class="feed-winners">${pillsHtml}</div>`:''}
+    </div>`;
+  }).join('');
 }
 window.loadHoy=loadHoy;
 
