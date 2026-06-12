@@ -665,7 +665,6 @@ let allPredictions={};
 let adminLoaded=false;
 let pendingDeleteName=null;
 let pendingClearResultId=null;
-let loadingHoy=false;
 
 function waitForFirebase(fn){if(window.firebaseReady)fn();else window.addEventListener('firebase-ready',fn,{once:true});}
 async function fsGet(key){return window.fbStorage.get(key);}
@@ -741,85 +740,99 @@ function getSpanishDayDate(){
 }
 
 async function loadHoy(){
-  if(loadingHoy) return;
-  loadingHoy=true;
-  try{
-  document.getElementById('hoy-date').textContent=getSpanishDayDate();
-  let results={};
-  try{const r=await fsGet('results');results=JSON.parse(r.value);}catch(e){}
-
-  const today=getTodayDateStr();
-  const todayMatches=MATCHES_DATA.filter(m=>m.date===today);
   const hoyContainer=document.getElementById('partidos-hoy-container');
-  const t=T[lang];
-
-  if(todayMatches.length===0){
-    hoyContainer.innerHTML=`<div class="no-partidos">${t.noPartidos}</div>`;
-  }else{
-    hoyContainer.innerHTML=todayMatches.map(m=>{
-      const r=results[m.id];
-      const hasResult=!!r;
-      return`<div class="partido-hoy${hasResult?' done':''}">
-        <div class="partido-hoy-group">Grupo ${m.group} · ${m.venue}</div>
-        <div class="partido-hoy-teams">
-          <div class="partido-hoy-team home">${cn(m.home)}</div>
-          <div class="partido-hoy-score${hasResult?'':' pending'}">${hasResult?r.h+' — '+r.a:'— vs —'}</div>
-          <div class="partido-hoy-team">${cn(m.away)}</div>
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  // Feed: últimos 8 partidos con resultado
-  const playedMatches=MATCHES_DATA.filter(m=>results[m.id]).slice(-8).reverse();
   const feedContainer=document.getElementById('feed-container');
+  const t=T[lang];
+  try{
+    document.getElementById('hoy-date').textContent=getSpanishDayDate();
 
-  if(playedMatches.length===0){
-    feedContainer.innerHTML=`<div class="no-partidos">${t.noResultados}</div>`;
-    return;
-  }
+    // 1. Load results (non-blocking)
+    let results={};
+    try{const r=await fsGet('results');results=JSON.parse(r.value);}catch(e){}
+    Object.assign(savedResults,results);
 
-  // Load all player predictions for feed
-  let players=[];
-  try{const pr=await fsGet('players');players=JSON.parse(pr.value);}catch(e){}
-  const preds={};
+    // 2. Partidos de hoy
+    const today=getTodayDateStr();
+    const todayMatches=MATCHES_DATA.filter(m=>m.date===today);
+    if(todayMatches.length===0){
+      hoyContainer.innerHTML='<div class="no-partidos">'+t.noPartidos+'</div>';
+    }else{
+      hoyContainer.innerHTML=todayMatches.map(m=>{
+        const r=results[m.id];const hasResult=!!r;
+        return '<div class="partido-hoy">'
+          +'<div class="partido-hoy-group">Grupo '+m.group+' · '+m.venue+'</div>'
+          +'<div class="partido-hoy-teams">'
+          +'<div class="partido-hoy-team home">'+cn(m.home)+'</div>'
+          +'<div class="partido-hoy-score'+(hasResult?'':' pending')+'">'+(hasResult?r.h+' — '+r.a:'— vs —')+'</div>'
+          +'<div class="partido-hoy-team">'+cn(m.away)+'</div>'
+          +'</div></div>';
+      }).join('');
+    }
 
-  await Promise.all(
-    players.map(async name=>{
+    // 3. Feed: últimos 8 partidos con resultado
+    const playedMatches=MATCHES_DATA.filter(m=>results[m.id]).slice(-8).reverse();
+    if(playedMatches.length===0){
+      feedContainer.innerHTML='<div class="no-partidos">'+t.noResultados+'</div>';
+      return;
+    }
+
+    // Show feed skeleton while loading predictions
+    feedContainer.innerHTML=playedMatches.map(m=>{
+      const r=results[m.id];
+      return '<div class="feed-item">'
+        +'<div class="feed-match"><span>'+cn(m.home)+' vs '+cn(m.away)+' · Grupo '+m.group+'</span>'
+        +'<span class="feed-score">'+r.h+' — '+r.a+'</span></div>'
+        +'<div class="feed-date">'+m.date+' · '+m.venue+'</div>'
+        +'<div class="feed-winners" id="feed-pills-'+m.id+'"><span style="font-size:11px;color:var(--muted)">Cargando...</span></div>'
+        +'</div>';
+    }).join('');
+
+    // 4. Load players list
+    let players=[];
+    try{const pr=await fsGet('players');players=JSON.parse(pr.value);}catch(e){}
+    if(players.length===0){
+      playedMatches.forEach(m=>{const el=document.getElementById('feed-pills-'+m.id);if(el)el.innerHTML='';});
+      return;
+    }
+
+    // 5. Load each player prediction independently — never blocks on failure
+    const preds={};
+    await Promise.allSettled(players.map(async name=>{
       try{
         const key='pred:'+name.toLowerCase().replace(/\s+/g,'_');
         const p=await fsGet(key);
         preds[name]=JSON.parse(p.value).predictions;
+        allPredictions[name]=preds[name];
       }catch(e){}
-    })
-  );
+    }));
 
-  feedContainer.innerHTML=playedMatches.map(m=>{
-    const r=results[m.id];
-    const exact=[],winner=[],partial=[],none=[];
-    for(const name in preds){
-      const p=preds[name][m.id];
-      if(!p){none.push(name);continue;}
-      if(p.h===r.h&&p.a===r.a){exact.push(name);continue;}
-      if(Math.sign(p.h-p.a)===Math.sign(r.h-r.a)){winner.push(name);continue;}
-      if(p.h===r.h||p.a===r.a){partial.push(name);continue;}
-      none.push(name);
-    }
-    const pillsHtml=[
-      ...exact.map(n=>`<span class="feed-pill exact">⭐ ${n}</span>`),
-      ...winner.map(n=>`<span class="feed-pill winner">✓ ${n}</span>`),
-      ...partial.map(n=>`<span class="feed-pill partial">· ${n}</span>`),
-      ...none.map(n=>`<span class="feed-pill none">${n}</span>`),
-    ].join('');
-    return`<div class="feed-item">
-      <div class="feed-match">
-        <span>${cn(m.home)} vs ${cn(m.away)} · Grupo ${m.group}</span>
-        <span class="feed-score">${r.h} — ${r.a}</span>
-      </div>
-      <div class="feed-date">${m.date} · ${m.venue}</div>
-      ${players.length>0?`<div class="feed-winners">${pillsHtml}</div>`:''}
-    </div>`;
-  }).join('');
+    // 6. Render pills per match
+    playedMatches.forEach(m=>{
+      const r=results[m.id];
+      const el=document.getElementById('feed-pills-'+m.id);
+      if(!el)return;
+      const exact=[],winner=[],partial=[],none=[];
+      players.forEach(name=>{
+        const pp=preds[name];if(!pp){none.push(name);return;}
+        const p=pp[m.id];if(!p){none.push(name);return;}
+        if(p.h===r.h&&p.a===r.a){exact.push(name);return;}
+        if(Math.sign(p.h-p.a)===Math.sign(r.h-r.a)){winner.push(name);return;}
+        if(p.h===r.h||p.a===r.a){partial.push(name);return;}
+        none.push(name);
+      });
+      el.innerHTML=[
+        ...exact.map(n=>'<span class="feed-pill exact">⭐ '+n+'</span>'),
+        ...winner.map(n=>'<span class="feed-pill winner">✓ '+n+'</span>'),
+        ...partial.map(n=>'<span class="feed-pill partial">· '+n+'</span>'),
+        ...none.map(n=>'<span class="feed-pill none">'+n+'</span>'),
+      ].join('');
+    });
+
+  }catch(e){
+    console.error('loadHoy error:',e);
+    hoyContainer.innerHTML='<div class="no-partidos">❌ Error al cargar. <button class="refresh-btn" onclick="loadHoy()" style="margin-left:8px">↻ Reintentar</button></div>';
+    feedContainer.innerHTML='';
+  }
 }
 window.loadHoy=loadHoy;
 
