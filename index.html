@@ -228,10 +228,10 @@ body{background:var(--fondo);color:var(--text);font-family:'DM Sans',sans-serif;
 </div>
 
 <nav class="nav" style="display:none" id="main-nav">
-  <button class="nav-btn active" onclick="goTo('quiniela')" id="nav-quiniela">
+  <button class="nav-btn" onclick="goTo('quiniela')" id="nav-quiniela">
     <span class="nav-icon">⚽</span><span id="nav-lbl-quiniela">Mi Quiniela</span>
   </button>
-  <button class="nav-btn" onclick="goTo('tabla')" id="nav-tabla">
+  <button class="nav-btn active" onclick="goTo('tabla')" id="nav-tabla">
     <span class="nav-icon">🏆</span><span id="nav-lbl-tabla">Tabla</span>
   </button>
   <button class="nav-btn" onclick="goTo('admin')" id="nav-admin">
@@ -240,7 +240,7 @@ body{background:var(--fondo);color:var(--text);font-family:'DM Sans',sans-serif;
 </nav>
 
 <!-- ===== QUINIELA ===== -->
-<div id="tab-quiniela" class="screen active" style="display:none">
+<div id="tab-quiniela" class="screen" style="display:none">
   <div id="qscreen-form" class="screen active">
     <div class="hero">
       <div class="hero-eyebrow" id="lbl-quiniela-eye">Fase de Grupos · Copa del Mundo FIFA</div>
@@ -303,7 +303,7 @@ body{background:var(--fondo);color:var(--text);font-family:'DM Sans',sans-serif;
 </div>
 
 <!-- ===== TABLA ===== -->
-<div id="tab-tabla" class="screen" style="display:none">
+<div id="tab-tabla" class="screen active" style="display:none">
   <div class="tabla-hero">
     <div class="tabla-hero-title" id="lbl-tabla-title">Tabla de Posiciones</div>
     <div class="tabla-hero-year">2026</div>
@@ -466,7 +466,7 @@ window.fbStorage = {
 
 document.getElementById("fb-loading").style.display = "none";
 document.getElementById("main-nav").style.display    = "flex";
-document.getElementById("tab-quiniela").style.display = "block";
+document.getElementById("tab-tabla").style.display = "block";
 window.firebaseReady = true;
 window.dispatchEvent(new Event("firebase-ready"));
 </script>
@@ -925,6 +925,8 @@ async function loadTabla(){
     let results={},players=[];
     try{const rRes=await fsGet('results');results=JSON.parse(rRes.value);}catch(e){}
     try{const pRes=await fsGet('players');players=JSON.parse(pRes.value);}catch(e){}
+    // Store results globally so openDetail works for all users, not just admins
+    Object.assign(savedResults,results);
     const matchesDone=Object.keys(results).length;
     document.getElementById('st-matches').textContent=matchesDone;
     document.getElementById('st-max').textContent=matchesDone*5;
@@ -1040,7 +1042,7 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove('show'),3000);
 }
 
-waitForFirebase(()=>{ buildMatches(); });
+waitForFirebase(()=>{ buildMatches(); loadTabla(); });
 </script>
 </body>
 </html>
