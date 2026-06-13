@@ -234,6 +234,16 @@ body{background:var(--fondo);color:var(--text);font-family:'DM Sans',sans-serif;
 .partido-hoy-score.pending{color:var(--muted);font-size:16px;}
 .partido-hoy-venue{font-size:10px;color:var(--muted);margin-top:6px;text-align:center;}
 .no-partidos{text-align:center;padding:2rem;color:var(--muted);font-size:13px;}
+.pred-row-wrap{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--border);}
+.pred-pill{display:flex;align-items:center;gap:5px;border-radius:8px;padding:4px 8px;font-size:11px;border:1px solid var(--border);}
+.pred-pill-name{font-weight:500;color:var(--text);}
+.pred-pill-score{font-family:'Bebas Neue',sans-serif;font-size:13px;color:var(--muted);}
+.pred-pill-pts{font-family:'Bebas Neue',sans-serif;font-size:13px;margin-left:2px;}
+.pred-pill-none{background:var(--surface2);}
+.pred-pill-exact{background:#1a1200;border-color:rgba(255,215,0,0.4);}.pred-pill-exact .pred-pill-pts{color:var(--accent);}
+.pred-pill-win{background:#0a1a0a;border-color:rgba(0,200,83,0.35);}.pred-pill-win .pred-pill-pts{color:var(--verde);}
+.pred-pill-partial{background:#0a1020;border-color:rgba(59,158,255,0.3);}.pred-pill-partial .pred-pill-pts{color:var(--info);}
+.pred-pill-miss{background:var(--surface2);border-color:#2a1a1a;}.pred-pill-miss .pred-pill-pts{color:var(--danger);}
 
 /* TOAST & LOADING */
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:#1a2a1a;border:1px solid var(--verde);border-radius:10px;padding:10px 18px;font-size:13px;color:var(--verde);z-index:999;transition:transform 0.3s;white-space:nowrap;}
@@ -722,35 +732,107 @@ function getSpanishDayDate(){
   return dias[now.getDay()]+', '+now.getDate()+' de '+meses[now.getMonth()]+' '+now.getFullYear();
 }
 
-async function loadHoy(){
-  const hoyContainer=document.getElementById('partidos-hoy-container');
-  const t=T[lang];
-  try{
-    document.getElementById('hoy-date').textContent=getSpanishDayDate();
-    // Load results
-    let results={};
-    try{const r=await fsGet('results');results=JSON.parse(r.value);}catch(e){}
-    Object.assign(savedResults,results);
-    // Partidos de hoy
-    const today=getTodayDateStr();
-    const todayMatches=MATCHES_DATA.filter(m=>m.date===today);
-    if(todayMatches.length===0){
-      hoyContainer.innerHTML='<div class="no-partidos">'+t.noPartidos+'</div>';
-    }else{
-      hoyContainer.innerHTML=todayMatches.map(m=>{
-        const r=results[m.id];const has=!!r;
-        return '<div class="partido-hoy">'
-          +'<div class="partido-hoy-group">Grupo '+m.group+' · '+m.venue+'</div>'
-          +'<div class="partido-hoy-teams">'
-          +'<div class="partido-hoy-team home">'+cn(m.home)+'</div>'
-          +'<div class="partido-hoy-score'+(has?'':' pending')+'">'+(has?r.h+' — '+r.a:'— vs —')+'</div>'
-          +'<div class="partido-hoy-team">'+cn(m.away)+'</div>'
-          +'</div></div>';
-      }).join('');
+function buildMatchCard(m, res, players, preds, showPreds) {
+  var has = !!res;
+  var html = '<div class="partido-hoy' + (has ? ' done' : '') + '">';
+  html += '<div class="partido-hoy-group">Grupo ' + m.group + ' &middot; ' + m.venue + '</div>';
+  html += '<div class="partido-hoy-teams">';
+  html += '<div class="partido-hoy-team home">' + cn(m.home) + '</div>';
+  html += '<div class="partido-hoy-score' + (has ? '' : ' pending') + '">' + (has ? res.h + ' &mdash; ' + res.a : m.date) + '</div>';
+  html += '<div class="partido-hoy-team">' + cn(m.away) + '</div>';
+  html += '</div>';
+  if (showPreds && players.length > 0) {
+    html += '<div class="pred-row-wrap">';
+    for (var i = 0; i < players.length; i++) {
+      var name = players[i];
+      var pp = preds[name];
+      var p = pp ? pp[m.id] : null;
+      var predStr = p ? (p.h + '-' + p.a) : '?';
+      var pts = 0; var cls = 'pred-pill-none';
+      if (p && res) {
+        if (p.h === res.h && p.a === res.a) { pts = 5; cls = 'pred-pill-exact'; }
+        else if (Math.sign(p.h - p.a) === Math.sign(res.h - res.a)) { pts = 3; cls = 'pred-pill-win'; }
+        else if (p.h === res.h || p.a === res.a) { pts = 1; cls = 'pred-pill-partial'; }
+        else { cls = 'pred-pill-miss'; }
+      }
+      html += '<div class="pred-pill ' + cls + '">';
+      html += '<span class="pred-pill-name">' + name + '</span>';
+      html += '<span class="pred-pill-score">' + predStr + '</span>';
+      if (res) html += '<span class="pred-pill-pts">' + pts + 'pt</span>';
+      html += '</div>';
     }
-  }catch(e){
-    console.error('loadHoy:',e);
-    hoyContainer.innerHTML='<div class="no-partidos">❌ Error. <button class="refresh-btn" onclick="loadHoy()" style="margin-left:8px">↻ Reintentar</button></div>';
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+async function loadHoy(){
+  var hoyContainer = document.getElementById('partidos-hoy-container');
+  var t = T[lang];
+  try {
+    document.getElementById('hoy-date').textContent = getSpanishDayDate();
+
+    // Load results
+    var results = {};
+    try { var r = await fsGet('results'); results = JSON.parse(r.value); } catch(e) {}
+    Object.assign(savedResults, results);
+
+    // --- LAST 2 RECENTLY UPDATED ---
+    var played = [];
+    for (var i = 0; i < MATCHES_DATA.length; i++) {
+      if (results[MATCHES_DATA[i].id]) played.push(MATCHES_DATA[i]);
+    }
+    var recent = played.slice(-2).reverse();
+
+    // --- NEXT 4 UPCOMING (in schedule order, no result yet) ---
+    var upcoming = [];
+    for (var j = 0; j < MATCHES_DATA.length; j++) {
+      if (!results[MATCHES_DATA[j].id]) upcoming.push(MATCHES_DATA[j]);
+      if (upcoming.length === 4) break;
+    }
+
+    // --- Load player predictions ---
+    var players = [];
+    try { var pr = await fsGet('players'); players = JSON.parse(pr.value); } catch(e) {}
+    var preds = {};
+    var fetches = players.map(function(name) {
+      return fsGet('pred:' + name.toLowerCase().replace(/\s+/g,'_'))
+        .then(function(p){ preds[name] = JSON.parse(p.value).predictions; allPredictions[name] = preds[name]; })
+        .catch(function(){});
+    });
+    await Promise.all(fetches);
+
+    // --- BUILD HTML ---
+    var html = '';
+
+    // Section: Recent results
+    if (recent.length > 0) {
+      html += '<div class="hoy-section-title" style="margin-bottom:10px">🕐 Últimos resultados</div>';
+      for (var a = 0; a < recent.length; a++) {
+        var m = recent[a];
+        var res = results[m.id];
+        html += buildMatchCard(m, res, players, preds, true);
+      }
+    }
+
+    // Section: Upcoming
+    if (upcoming.length > 0) {
+      html += '<div class="hoy-section-title" style="margin:16px 0 10px">📅 Próximos partidos</div>';
+      for (var b = 0; b < upcoming.length; b++) {
+        html += buildMatchCard(upcoming[b], null, players, preds, false);
+      }
+    }
+
+    if (html === '') {
+      html = '<div class="no-partidos">' + t.noPartidos + '</div>';
+    }
+
+    hoyContainer.innerHTML = html;
+
+  } catch(e) {
+    console.error('loadHoy:', e);
+    hoyContainer.innerHTML = '<div class="no-partidos">❌ Error al cargar. <button class="refresh-btn" onclick="loadHoy()" style="margin-left:8px">↻ Reintentar</button></div>';
   }
 }
 window.loadHoy=loadHoy;
