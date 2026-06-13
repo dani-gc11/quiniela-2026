@@ -495,7 +495,7 @@ window.dispatchEvent(new Event("firebase-ready"));
 </script>
 
 <!-- APP -->
-<script>
+<script type="module">
 const ADMIN_PASSWORD='Mundial2026';
 
 const COUNTRY={
@@ -767,6 +767,7 @@ function buildMatchCard(m, res, players, preds, showPreds) {
   return html;
 }
 
+window.buildMatchCard=buildMatchCard;
 async function loadHoy(){
   var hoyContainer = document.getElementById('partidos-hoy-container');
   var t = T[lang];
